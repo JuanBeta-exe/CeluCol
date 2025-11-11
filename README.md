@@ -1,5 +1,5 @@
 
-# El Faro del Saber - Aplicación de E-commerce
+# CeluCol - Aplicación de E-commerce
 
 Aplicación web de comercio electrónico construida con React, Vite y Supabase. Permite la gestión de productos, carrito de compras, y procesamiento de pedidos con diferentes métodos de pago.
 
