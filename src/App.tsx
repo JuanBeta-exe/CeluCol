@@ -459,8 +459,13 @@ export default function App() {
       <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Store className="size-6 text-primary" />
-            <h1>CeluCol</h1>
+          <img 
+          src="/src/assets/logo.svg" 
+          alt="CeluCol Logo" 
+          className="h-10 w-10 sm:h-16 sm:w-16 object-contain" 
+          style={{ display: 'block' }} 
+          />          
+          <h1 className="flex items-center h-8 leading-8">CeluCol</h1>
           </div>
 
           <div className="flex items-center gap-2">
@@ -511,7 +516,7 @@ export default function App() {
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="mb-6">
             <TabsTrigger value="productos">
-              <Store className="size-4 mr-2" />
+                <Store className="size-4 mr-2" />
               Productos
             </TabsTrigger>
             {user && (
@@ -543,8 +548,8 @@ export default function App() {
             </div>
 
             {filteredProducts.length === 0 ? (
-              <div className="text-center py-12 text-muted-foreground">
-                <Store className="size-16 mx-auto mb-4" />
+              <div className="text-center py-16 text-muted-foreground">
+                <img src="/src/assets/logo.svg" alt="Sin productos" className="size-24 mx-auto mb-16" />
                 <p>No se encontraron productos</p>
               </div>
             ) : (

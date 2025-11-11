@@ -4,6 +4,128 @@ import { logger } from 'npm:hono/logger';
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import * as kv from './kv_store.tsx';
 
+
+// ==========================================
+// Función para enviar emails con templates específicos
+// ==========================================
+async function sendEmail(to: string, type: string, data: any) {
+  try {
+    const templates: { [key: string]: any } = {
+      'registration': {
+        subject: `¡Bienvenido a El Faro del Saber, ${data.name}!`,
+        html: buildWelcomeEmail(data)
+      },
+      'order_created': {
+        subject: `Confirmación de Pedido #${data.orderId.slice(-6)}`,
+        html: buildOrderConfirmationEmail(data)
+      },
+      'order_updated': {
+        subject: `Actualización de tu Pedido #${data.orderId.slice(-6)}`,
+        html: buildOrderUpdateEmail(data)
+      }
+    };
+
+    const template = templates[type];
+    if (!template) {
+      console.error(`Template no encontrado para tipo: ${type}`);
+      return;
+    }
+
+    const response = await fetch(
+      `${Deno.env.get('SUPABASE_URL')}/functions/v1/send-email`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${Deno.env.get('SUPABASE_ANON_KEY')}`,
+        },
+        body: JSON.stringify({ 
+          to, 
+          subject: template.subject,
+          html: template.html
+        }),
+      }
+    );
+    
+    if (!response.ok) {
+      console.error('❌ Error enviando email:', await response.text());
+    } else {
+      console.log('✅ Email enviado:', type);
+    }
+  } catch (error) {
+    console.error('❌ Error:', error);
+  }
+}
+
+// Templates de email mejorados
+function buildOrderConfirmationEmail(data: any): string {
+  return `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
+      <h2 style="color: #2563eb; text-align: center;">¡Gracias por tu compra en El Faro del Saber!</h2>
+      
+      <div style="background: #f8fafc; padding: 16px; border-radius: 6px; margin: 20px 0;">
+        <h3 style="color: #374151; margin-top: 0;">Resumen del Pedido</h3>
+        <p><strong>Número de Pedido:</strong> #${data.orderId.slice(-6)}</p>
+        <p><strong>Total:</strong> $${data.total}</p>
+        <p><strong>Método de Pago:</strong> ${data.paymentMethod}</p>
+        <p><strong>Dirección de Envío:</strong> ${data.shippingAddress}</p>
+      </div>
+
+      <div style="text-align: center; margin: 30px 0;">
+        <a href="${Deno.env.get('VITE_APP_URL')}/tracking/${data.orderId}" 
+           style="background: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
+          🔍 Seguir mi pedido
+        </a>
+      </div>
+
+      <div style="border-top: 1px solid #e0e0e0; padding-top: 20px; color: #6b7280; font-size: 14px;">
+        <p>¿Tienes preguntas? Contáctanos en soporte@elfarodelsaber.com</p>
+      </div>
+    </div>
+  `;
+}
+
+function buildOrderUpdateEmail(data: any): string {
+  const statusColors: { [key: string]: string } = {
+    'confirmado': '#10b981',
+    'enviado': '#3b82f6', 
+    'entregado': '#059669',
+    'cancelado': '#ef4444'
+  };
+
+  return `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
+      <h2 style="color: #2563eb; text-align: center;">Actualización de tu Pedido</h2>
+      
+      <div style="background: #f8fafc; padding: 16px; border-radius: 6px; margin: 20px 0; text-align: center;">
+        <p>Tu pedido <strong>#${data.orderId.slice(-6)}</strong> ha sido actualizado:</p>
+        <div style="background: ${statusColors[data.status] || '#6b7280'}; color: white; padding: 8px 16px; border-radius: 20px; display: inline-block; margin: 10px 0;">
+          <strong>${data.status.toUpperCase()}</strong>
+        </div>
+        <p>${data.description}</p>
+      </div>
+
+      <div style="text-align: center; margin: 30px 0;">
+        <a href="${Deno.env.get('VITE_APP_URL')}/tracking/${data.orderId}" 
+           style="background: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
+          📦 Ver detalles completos
+        </a>
+      </div>
+    </div>
+  `;
+}
+
+function buildWelcomeEmail(data: any): string {
+  return `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+      <h2 style="color: #2563eb; text-align: center;">¡Bienvenido a El Faro del Saber!</h2>
+      <p>Hola <strong>${data.name}</strong>,</p>
+      <p>Tu cuenta ha sido creada exitosamente como <strong>${data.role}</strong>.</p>
+      <p>¡Explora nuestro catálogo y descubre grandes libros!</p>
+    </div>
+  `;
+}
+
 const app = new Hono();
 
 app.use('*', cors());
@@ -59,6 +181,12 @@ app.post('/make-server-c2dc5864/signup', async (c) => {
       console.log(`Error creating user during signup: ${error.message}`);
       return c.json({ error: error.message }, 400);
     }
+
+    // Enviar email de bienvenida
+    await sendEmail(email, 'registration', {
+      name: name,
+      role: role,
+    }).catch(err => console.error('Error enviando email de registro:', err));
 
     return c.json({ user: data.user });
   } catch (error) {
@@ -351,6 +479,7 @@ app.delete('/make-server-c2dc5864/cart/:productId', async (c) => {
 
 // ============= ORDER ROUTES =============
 
+// ✅ AGREGA ESTE ENDPOINT COMPLETO AQUÍ:
 app.post('/make-server-c2dc5864/orders', async (c) => {
   try {
     const user = await getUser(c.req.raw);
@@ -384,9 +513,31 @@ app.post('/make-server-c2dc5864/orders', async (c) => {
 
     await kv.set(`order:${orderId}`, order);
     await kv.set(`user:${user.id}:order:${orderId}`, orderId);
-    
+
+    // ✅ ESTE ES EL TERCER PUNTO QUE NECESITAS:
+    // Crear evento de tracking inicial
+    const initialEventId = crypto.randomUUID();
+    const initialTrackingEvent = {
+      id: initialEventId,
+      orderId: orderId,
+      status: 'pendiente',
+      description: 'Pedido recibido y en espera de confirmación',
+      timestamp: new Date().toISOString(),
+    };
+
+    await kv.set(`tracking:${orderId}:${initialEventId}`, initialTrackingEvent);
+
     // Clear cart
     await kv.set(`cart:${user.id}`, { items: [] });
+
+    // Enviar email de confirmación de orden
+    await sendEmail(user.email, 'order_created', {
+      orderId: orderId,
+      items: cart.items,
+      total: total,
+      shippingAddress: shippingAddress,
+      paymentMethod: paymentMethod,
+    }).catch(err => console.error('Error enviando email de orden:', err));
 
     return c.json({ order });
   } catch (error) {
@@ -463,11 +614,114 @@ app.put('/make-server-c2dc5864/orders/:id/status', async (c) => {
 
     await kv.set(`order:${orderId}`, order);
 
+    // Enviar email de actualización al cliente
+    await sendEmail(order.userEmail, 'order_updated', {
+      orderId: orderId,
+      status: status,
+    }).catch(err => console.error('Error enviando email de actualización:', err));
+
     return c.json({ order });
   } catch (error) {
     console.log(`Error updating order status: ${error}`);
     return c.json({ error: 'Error updating order status' }, 500);
   }
 });
+
+// ============= ORDER TRACKING ROUTES =============
+
+app.get('/make-server-c2dc5864/orders/:id/tracking', async (c) => {
+  try {
+    const user = await getUser(c.req.raw);
+    if (!user) {
+      return c.json({ error: 'Unauthorized' }, 401);
+    }
+
+    const orderId = c.req.param('id');
+    const order = await kv.get(`order:${orderId}`);
+
+    if (!order) {
+      return c.json({ error: 'Order not found' }, 404);
+    }
+
+    // Verificar que el usuario es el dueño o admin
+    if (order.userId !== user.id && user.user_metadata?.role !== 'administrador') {
+      return c.json({ error: 'Forbidden' }, 403);
+    }
+
+    // Obtener eventos de tracking
+    const trackingEvents = await kv.getByPrefix(`tracking:${orderId}:`) || [];
+    
+    // Ordenar eventos por fecha (más reciente primero)
+    trackingEvents.sort((a: any, b: any) => 
+      new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    );
+
+    return c.json({ order, trackingEvents });
+  } catch (error) {
+    console.log(`Error fetching order tracking: ${error}`);
+    return c.json({ error: 'Error fetching order tracking' }, 500);
+  }
+});
+
+app.post('/make-server-c2dc5864/orders/:id/tracking-events', async (c) => {
+  try {
+    const user = await getUser(c.req.raw);
+    if (!user || user.user_metadata?.role !== 'administrador') {
+      return c.json({ error: 'Unauthorized. Admin access required.' }, 403);
+    }
+
+    const orderId = c.req.param('id');
+    const { status, description, location } = await c.req.json();
+
+    const order = await kv.get(`order:${orderId}`);
+    if (!order) {
+      return c.json({ error: 'Order not found' }, 404);
+    }
+
+    const eventId = crypto.randomUUID();
+    const trackingEvent = {
+      id: eventId,
+      orderId,
+      status,
+      description: description || getStatusDescription(status),
+      location,
+      timestamp: new Date().toISOString(),
+    };
+
+    // Guardar evento de tracking
+    await kv.set(`tracking:${orderId}:${eventId}`, trackingEvent);
+
+    // Actualizar estado principal del pedido
+    order.status = status;
+    order.updatedAt = new Date().toISOString();
+    await kv.set(`order:${orderId}`, order);
+
+    // Enviar email de actualización al cliente
+    await sendEmail(order.userEmail, 'order_updated', {
+      orderId: orderId,
+      status: status,
+      description: trackingEvent.description,
+      trackingUrl: `${Deno.env.get('VITE_APP_URL')}/tracking/${orderId}`
+    }).catch(err => console.error('Error enviando email de actualización:', err));
+
+    return c.json({ trackingEvent });
+  } catch (error) {
+    console.log(`Error creating tracking event: ${error}`);
+    return c.json({ error: 'Error creating tracking event' }, 500);
+  }
+});
+
+// ============= HELPER FUNCTIONS =============
+
+function getStatusDescription(status: string): string {
+  const descriptions: { [key: string]: string } = {
+    'pendiente': 'Pedido recibido y en espera de confirmación',
+    'confirmado': 'Pedido confirmado y en proceso de preparación',
+    'enviado': 'Pedido enviado a la dirección de entrega',
+    'entregado': 'Pedido entregado satisfactoriamente',
+    'cancelado': 'Pedido cancelado'
+  };
+  return descriptions[status] || 'Estado actualizado';
+}
 
 Deno.serve(app.fetch);
