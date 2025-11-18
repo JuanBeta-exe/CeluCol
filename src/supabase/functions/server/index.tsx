@@ -217,7 +217,7 @@ app.post('/make-server-c2dc5864/products', async (c) => {
       return c.json({ error: 'Unauthorized. Admin access required.' }, 403);
     }
 
-    const { name, description, price, image } = await c.req.json();
+    const { name, description, price, image, stock } = await c.req.json();
     
     const productId = crypto.randomUUID();
     let imageUrl = null;
@@ -256,6 +256,7 @@ app.post('/make-server-c2dc5864/products', async (c) => {
       description,
       price: parseFloat(price),
       imageUrl,
+      stock: stock !== undefined ? parseInt(stock) : 0,
       createdAt: new Date().toISOString(),
     };
 
@@ -302,7 +303,7 @@ app.put('/make-server-c2dc5864/products/:id', async (c) => {
     }
 
     const id = c.req.param('id');
-    const { name, description, price, image } = await c.req.json();
+    const { name, description, price, image, stock } = await c.req.json();
     
     const existingProduct = await kv.get(`product:${id}`);
     if (!existingProduct) {
@@ -345,6 +346,7 @@ app.put('/make-server-c2dc5864/products/:id', async (c) => {
       description: description || existingProduct.description,
       price: price ? parseFloat(price) : existingProduct.price,
       imageUrl,
+      stock: stock !== undefined ? parseInt(stock) : existingProduct.stock,
       updatedAt: new Date().toISOString(),
     };
 
@@ -405,11 +407,21 @@ app.post('/make-server-c2dc5864/cart', async (c) => {
       return c.json({ error: 'Product not found' }, 404);
     }
 
+    // Check stock availability
+    if (product.stock !== undefined && product.stock < quantity) {
+      return c.json({ error: 'Insufficient stock' }, 400);
+    }
+
     const cart = await kv.get(`cart:${user.id}`) || { items: [] };
     const existingItemIndex = cart.items.findIndex((item: any) => item.productId === productId);
 
     if (existingItemIndex >= 0) {
-      cart.items[existingItemIndex].quantity += quantity;
+      const newQuantity = cart.items[existingItemIndex].quantity + quantity;
+      // Check total quantity against stock
+      if (product.stock !== undefined && product.stock < newQuantity) {
+        return c.json({ error: 'Insufficient stock' }, 400);
+      }
+      cart.items[existingItemIndex].quantity = newQuantity;
     } else {
       cart.items.push({
         productId,
@@ -446,6 +458,11 @@ app.put('/make-server-c2dc5864/cart/:productId', async (c) => {
     if (quantity <= 0) {
       cart.items.splice(itemIndex, 1);
     } else {
+      // Validate stock availability
+      const product = await kv.get(`product:${productId}`);
+      if (product && product.stock !== undefined && product.stock < quantity) {
+        return c.json({ error: 'Insufficient stock' }, 400);
+      }
       cart.items[itemIndex].quantity = quantity;
     }
 
@@ -494,6 +511,17 @@ app.post('/make-server-c2dc5864/orders', async (c) => {
       return c.json({ error: 'Cart is empty' }, 400);
     }
 
+    // Validate stock availability for all items before creating order
+    for (const item of cart.items) {
+      const product = await kv.get(`product:${item.productId}`);
+      if (!product) {
+        return c.json({ error: `Product ${item.productId} not found` }, 404);
+      }
+      if (product.stock !== undefined && product.stock < item.quantity) {
+        return c.json({ error: `Insufficient stock for ${product.name}` }, 400);
+      }
+    }
+
     const orderId = crypto.randomUUID();
     const total = cart.items.reduce((sum: number, item: any) => {
       return sum + (item.product.price * item.quantity);
@@ -510,6 +538,15 @@ app.post('/make-server-c2dc5864/orders', async (c) => {
       status: 'pendiente',
       createdAt: new Date().toISOString(),
     };
+
+    // Decrement stock for each product in the order
+    for (const item of cart.items) {
+      const product = await kv.get(`product:${item.productId}`);
+      if (product && product.stock !== undefined) {
+        product.stock = Math.max(0, product.stock - item.quantity);
+        await kv.set(`product:${item.productId}`, product);
+      }
+    }
 
     await kv.set(`order:${orderId}`, order);
     await kv.set(`user:${user.id}:order:${orderId}`, orderId);

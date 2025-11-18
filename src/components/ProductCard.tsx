@@ -9,6 +9,7 @@ interface Product {
   description: string;
   price: number;
   imageUrl?: string;
+  stock?: number;
 }
 
 interface ProductCardProps {
@@ -39,7 +40,14 @@ export function ProductCard({ product, onAddToCart, onEdit, onDelete, isAdmin }:
       <CardContent className="p-4 flex-1">
         <h3 className="mb-2 line-clamp-1">{product.name}</h3>
         <p className="text-muted-foreground mb-2 line-clamp-2">{product.description}</p>
-        <p className="text-primary">${product.price.toFixed(2)}</p>
+        <div className="flex items-center justify-between">
+          <p className="text-primary">${product.price.toFixed(2)}</p>
+          {product.stock !== undefined && (
+            <p className={`text-sm ${product.stock > 0 ? 'text-muted-foreground' : 'text-destructive'}`}>
+              Stock: {product.stock}
+            </p>
+          )}
+        </div>
       </CardContent>
 
       <CardFooter className="p-4 pt-0 gap-2">
@@ -68,9 +76,10 @@ export function ProductCard({ product, onAddToCart, onEdit, onDelete, isAdmin }:
           <Button
             className="w-full"
             onClick={() => onAddToCart?.(product.id)}
+            disabled={product.stock !== undefined && product.stock <= 0}
           >
             <ShoppingCart className="size-4 mr-2" />
-            Agregar al Carrito
+            {product.stock !== undefined && product.stock <= 0 ? 'Sin Stock' : 'Agregar al Carrito'}
           </Button>
         )}
       </CardFooter>

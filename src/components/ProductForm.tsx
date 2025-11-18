@@ -12,6 +12,7 @@ interface Product {
   description: string;
   price: number;
   imageUrl?: string;
+  stock?: number;
 }
 
 interface ProductFormProps {
@@ -48,6 +49,7 @@ export function ProductForm({ open, onClose, onSubmit, product, isLoading }: Pro
       name: formData.get('name') as string,
       description: formData.get('description') as string,
       price: parseFloat(formData.get('price') as string),
+      stock: parseInt(formData.get('stock') as string) || 0,
       image: imageData || undefined,
     });
   };
@@ -95,6 +97,19 @@ export function ProductForm({ open, onClose, onSubmit, product, isLoading }: Pro
               min="0"
               defaultValue={product?.price}
               placeholder="0.00"
+              required
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="stock">Stock Disponible</Label>
+            <Input
+              id="stock"
+              name="stock"
+              type="number"
+              min="0"
+              defaultValue={product?.stock || 0}
+              placeholder="0"
               required
             />
           </div>
