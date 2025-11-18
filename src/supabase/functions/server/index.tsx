@@ -458,6 +458,11 @@ app.put('/make-server-c2dc5864/cart/:productId', async (c) => {
     if (quantity <= 0) {
       cart.items.splice(itemIndex, 1);
     } else {
+      // Validate stock availability
+      const product = await kv.get(`product:${productId}`);
+      if (product && product.stock !== undefined && product.stock < quantity) {
+        return c.json({ error: 'Insufficient stock' }, 400);
+      }
       cart.items[itemIndex].quantity = quantity;
     }
 
@@ -504,6 +509,17 @@ app.post('/make-server-c2dc5864/orders', async (c) => {
 
     if (!cart || cart.items.length === 0) {
       return c.json({ error: 'Cart is empty' }, 400);
+    }
+
+    // Validate stock availability for all items before creating order
+    for (const item of cart.items) {
+      const product = await kv.get(`product:${item.productId}`);
+      if (!product) {
+        return c.json({ error: `Product ${item.productId} not found` }, 404);
+      }
+      if (product.stock !== undefined && product.stock < item.quantity) {
+        return c.json({ error: `Insufficient stock for ${product.name}` }, 400);
+      }
     }
 
     const orderId = crypto.randomUUID();
