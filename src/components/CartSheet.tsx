@@ -13,6 +13,7 @@ interface CartItem {
     name: string;
     description: string;
     price: number;
+    stock: number;
     imageUrl?: string;
   };
 }
@@ -76,7 +77,8 @@ export function CartSheet({
 
                     <div className="flex-1 min-w-0">
                       <h4 className="line-clamp-1 mb-1">{item.product.name}</h4>
-                      <p className="text-primary mb-2">${item.product.price.toFixed(2)}</p>
+                      <p className="text-primary mb-1">${item.product.price.toFixed(2)}</p>
+                      <p className="text-xs text-muted-foreground mb-2">Stock disponible: {item.product.stock}</p>
                       
                       <div className="flex items-center gap-2">
                         <Button
@@ -92,6 +94,7 @@ export function CartSheet({
                           variant="outline"
                           size="sm"
                           onClick={() => onUpdateQuantity(item.productId, item.quantity + 1)}
+                          disabled={item.quantity >= item.product.stock}
                         >
                           <Plus className="size-4" />
                         </Button>

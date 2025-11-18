@@ -217,7 +217,7 @@ app.post('/make-server-c2dc5864/products', async (c) => {
       return c.json({ error: 'Unauthorized. Admin access required.' }, 403);
     }
 
-    const { name, description, price, image } = await c.req.json();
+    const { name, description, price, image, stock } = await c.req.json();
     
     const productId = crypto.randomUUID();
     let imageUrl = null;
@@ -255,6 +255,7 @@ app.post('/make-server-c2dc5864/products', async (c) => {
       name,
       description,
       price: parseFloat(price),
+      stock: typeof stock !== 'undefined' ? parseInt(stock, 10) : 0,
       imageUrl,
       createdAt: new Date().toISOString(),
     };
@@ -271,7 +272,9 @@ app.post('/make-server-c2dc5864/products', async (c) => {
 app.get('/make-server-c2dc5864/products', async (c) => {
   try {
     const products = await kv.getByPrefix('product:');
-    return c.json({ products });
+    // Ensure every product has a stock number
+    const normalized = (products || []).map((p: any) => ({ ...p, stock: typeof p.stock !== 'undefined' ? p.stock : 0 }));
+    return c.json({ products: normalized });
   } catch (error) {
     console.log(`Error fetching products: ${error}`);
     return c.json({ error: 'Error fetching products' }, 500);
@@ -287,6 +290,8 @@ app.get('/make-server-c2dc5864/products/:id', async (c) => {
       return c.json({ error: 'Product not found' }, 404);
     }
 
+    // Ensure stock is present
+    product.stock = typeof product.stock !== 'undefined' ? product.stock : 0;
     return c.json({ product });
   } catch (error) {
     console.log(`Error fetching product: ${error}`);
@@ -302,7 +307,7 @@ app.put('/make-server-c2dc5864/products/:id', async (c) => {
     }
 
     const id = c.req.param('id');
-    const { name, description, price, image } = await c.req.json();
+    const { name, description, price, image, stock } = await c.req.json();
     
     const existingProduct = await kv.get(`product:${id}`);
     if (!existingProduct) {
@@ -344,6 +349,7 @@ app.put('/make-server-c2dc5864/products/:id', async (c) => {
       name: name || existingProduct.name,
       description: description || existingProduct.description,
       price: price ? parseFloat(price) : existingProduct.price,
+      stock: typeof stock !== 'undefined' ? parseInt(stock, 10) : existingProduct.stock ?? 0,
       imageUrl,
       updatedAt: new Date().toISOString(),
     };
@@ -399,21 +405,31 @@ app.post('/make-server-c2dc5864/cart', async (c) => {
     }
 
     const { productId, quantity } = await c.req.json();
+    const qty = parseInt(quantity, 10) || 0;
+
+    if (qty <= 0) {
+      return c.json({ error: 'Cantidad inválida' }, 400);
+    }
+
     const product = await kv.get(`product:${productId}`);
-    
     if (!product) {
       return c.json({ error: 'Product not found' }, 404);
     }
 
     const cart = await kv.get(`cart:${user.id}`) || { items: [] };
     const existingItemIndex = cart.items.findIndex((item: any) => item.productId === productId);
+    const existingQty = existingItemIndex >= 0 ? cart.items[existingItemIndex].quantity : 0;
+
+    if (existingQty + qty > (product.stock ?? 0)) {
+      return c.json({ error: 'Stock insuficiente' }, 400);
+    }
 
     if (existingItemIndex >= 0) {
-      cart.items[existingItemIndex].quantity += quantity;
+      cart.items[existingItemIndex].quantity += qty;
     } else {
       cart.items.push({
         productId,
-        quantity,
+        quantity: qty,
         product
       });
     }
@@ -435,6 +451,7 @@ app.put('/make-server-c2dc5864/cart/:productId', async (c) => {
 
     const productId = c.req.param('productId');
     const { quantity } = await c.req.json();
+    const qty = parseInt(quantity, 10) || 0;
 
     const cart = await kv.get(`cart:${user.id}`) || { items: [] };
     const itemIndex = cart.items.findIndex((item: any) => item.productId === productId);
@@ -443,10 +460,18 @@ app.put('/make-server-c2dc5864/cart/:productId', async (c) => {
       return c.json({ error: 'Item not found in cart' }, 404);
     }
 
-    if (quantity <= 0) {
+    const product = await kv.get(`product:${productId}`);
+    if (!product) {
+      return c.json({ error: 'Product not found' }, 404);
+    }
+
+    if (qty <= 0) {
       cart.items.splice(itemIndex, 1);
     } else {
-      cart.items[itemIndex].quantity = quantity;
+      if (qty > (product.stock ?? 0)) {
+        return c.json({ error: 'Stock insuficiente' }, 400);
+      }
+      cart.items[itemIndex].quantity = qty;
     }
 
     await kv.set(`cart:${user.id}`, cart);
@@ -494,6 +519,17 @@ app.post('/make-server-c2dc5864/orders', async (c) => {
       return c.json({ error: 'Cart is empty' }, 400);
     }
 
+    // Verify stock for every item before creating the order
+    for (const item of cart.items) {
+      const prod = await kv.get(`product:${item.productId}`);
+      if (!prod) {
+        return c.json({ error: `Producto no encontrado: ${item.productId}` }, 404);
+      }
+      if ((prod.stock ?? 0) < item.quantity) {
+        return c.json({ error: `Stock insuficiente para ${prod.name}` }, 400);
+      }
+    }
+
     const orderId = crypto.randomUUID();
     const total = cart.items.reduce((sum: number, item: any) => {
       return sum + (item.product.price * item.quantity);
@@ -526,6 +562,16 @@ app.post('/make-server-c2dc5864/orders', async (c) => {
     };
 
     await kv.set(`tracking:${orderId}:${initialEventId}`, initialTrackingEvent);
+
+    // Disminuir stock de cada producto según la cantidad pedida
+    for (const item of cart.items) {
+      const prod = await kv.get(`product:${item.productId}`);
+      if (prod) {
+        prod.stock = Math.max(0, (prod.stock ?? 0) - item.quantity);
+        prod.updatedAt = new Date().toISOString();
+        await kv.set(`product:${prod.id}`, prod);
+      }
+    }
 
     // Clear cart
     await kv.set(`cart:${user.id}`, { items: [] });

@@ -8,6 +8,7 @@ interface Product {
   name: string;
   description: string;
   price: number;
+  stock: number; // nuevo campo
   imageUrl?: string;
 }
 
@@ -40,6 +41,7 @@ export function ProductCard({ product, onAddToCart, onEdit, onDelete, isAdmin }:
         <h3 className="mb-2 line-clamp-1">{product.name}</h3>
         <p className="text-muted-foreground mb-2 line-clamp-2">{product.description}</p>
         <p className="text-primary">${product.price.toFixed(2)}</p>
+        <p className="text-xs mt-1 text-muted-foreground">Stock: {product.stock}</p>
       </CardContent>
 
       <CardFooter className="p-4 pt-0 gap-2">
@@ -68,9 +70,10 @@ export function ProductCard({ product, onAddToCart, onEdit, onDelete, isAdmin }:
           <Button
             className="w-full"
             onClick={() => onAddToCart?.(product.id)}
+            disabled={product.stock <= 0}
           >
             <ShoppingCart className="size-4 mr-2" />
-            Agregar al Carrito
+            {product.stock > 0 ? 'Agregar al Carrito' : 'Sin Stock'}
           </Button>
         )}
       </CardFooter>
