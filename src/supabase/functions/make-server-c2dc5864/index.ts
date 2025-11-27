@@ -160,6 +160,24 @@ async function getUser(request: Request) {
   if (error || !user) {
     return null;
   }
+
+  // Sync role from user_roles if present; fallback to existing user_metadata.role
+  try {
+    const { data: ur } = await supabase.from('user_roles').select('role_id').eq('user_id', user.id);
+    let effectiveRoleName = user.user_metadata?.role;
+    if (ur && ur.length) {
+      const firstRoleId = ur[0].role_id;
+      const { data: roleRow } = await supabase.from('roles').select('name').eq('id', firstRoleId).maybeSingle();
+      if (roleRow?.name) {
+        effectiveRoleName = roleRow.name;
+      }
+    }
+    // Ensure user_metadata.role reflects effective role for downstream checks
+    user.user_metadata = { ...(user.user_metadata || {}), role: effectiveRoleName };
+  } catch (_) {
+    // non-fatal; keep original metadata
+  }
+
   return user;
 }
 

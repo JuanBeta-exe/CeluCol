@@ -12,6 +12,8 @@ import { ProductForm } from './components/ProductForm';
 import { CartSheet } from './components/CartSheet';
 import { CheckoutModal } from './components/CheckoutModal';
 import { OrdersView } from './components/OrdersView';
+// Roles and Users management panels removed
+import UsersRolesPanel from './components/UsersRolesPanel';
 import {
   ShoppingCart,
   User,
@@ -610,10 +612,16 @@ export default function App() {
                   onUpdateStatus={handleUpdateOrderStatus}
                 />
               </div>
+
+              <div className="mt-12">
+                <h2 className="mb-4">Usuarios y Roles</h2>
+                <UsersRolesPanel token={accessToken ?? undefined} />
+              </div>
             </TabsContent>
           )}
         </Tabs>
       </main>
+
 
       {/* Modals */}
       <AuthModal
